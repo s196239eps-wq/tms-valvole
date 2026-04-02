@@ -1,73 +1,73 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>TMS - Gestione Revisioni</title>
-    <style>
-        :root { --red: #c0392b; --green: #27ae60; }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: sans-serif; background: #e8e8e8; padding: 20px; }
-        
-        /* Grafica Home */
-        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); text-align: center; max-width: 450px; margin: auto; }
-        .logo-img { max-width: 130px; margin-bottom: 15px; }
-        h1 { color: var(--red); font-size: 22px; margin-bottom: 20px; }
-        
-        .btn { display: block; width: 100%; padding: 16px; margin-bottom: 10px; border-radius: 12px; border: 2px solid var(--red); background: white; color: var(--red); font-weight: bold; font-size: 17px; cursor: pointer; text-decoration: none; }
-        .btn-main { background: var(--red); color: white; }
-        
-        /* Status */
-        .status-box { margin-top: 20px; padding: 15px; background: white; border-radius: 12px; text-align: center; }
-        .badge { display: inline-block; padding: 5px 15px; border-radius: 20px; font-size: 13px; font-weight: bold; margin-bottom: 10px; background: #fff3cd; }
-        .bg-online { background: #d4edda; color: #155724; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>TMS - Sistema Revisioni Cloud</title>
+<style>
+:root { --red: #c0392b; --border: #888; --header-bg: #f0f0f0; --green: #27ae60; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; }
+
+/* --- HOME SCREEN --- */
+#home-screen { display: flex; flex-direction: column; align-items: center; padding: 30px 20px; min-height: 100vh; }
+.home-card { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); text-align: center; width: 100%; max-width: 400px; margin-bottom: 20px; }
+.home-card img { max-width: 140px; margin-bottom: 15px; }
+.home-title { font-size: 20px; font-weight: 800; color: var(--red); text-transform: uppercase; }
+
+.btn { width: 100%; max-width: 340px; padding: 15px; margin: 8px 0; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; border: 2px solid var(--red); }
+.btn-main { background: var(--red); color: white; }
+.btn-sub { background: white; color: var(--red); }
+
+.status-box { background: white; padding: 15px; border-radius: 12px; width: 100%; max-width: 400px; text-align: center; margin-top: 20px; }
+.badge { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; background: #eee; }
+.online { background: #d4edda; color: #155724; }
+
+/* --- FORM SCREEN (Logica V8) --- */
+#form-screen { display: none; background: white; min-height: 100vh; max-width: 900px; margin: 0 auto; }
+.top-bar { background: white; padding: 10px; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--red); position: sticky; top: 0; z-index: 100; }
+.section-header { background: #e0e0e0; font-weight: 800; font-size: 13px; padding: 8px 10px; border-top: 1.5px solid var(--border); text-transform: uppercase; }
+.dati-row { display: flex; border-bottom: 1px solid #ddd; }
+.dati-label { background: var(--header-bg); font-weight: 700; font-size: 12px; padding: 8px; width: 150px; border-right: 1px solid #ddd; }
+.dati-input { flex: 1; border: none; padding: 8px; font-size: 12px; outline: none; }
+
+/* Tabelle Tenute */
+.tenute-table { width: 100%; border-collapse: collapse; }
+.tenute-table th { background: var(--header-bg); font-size: 11px; padding: 5px; border: 1px solid #ddd; }
+.tenute-table td { border: 1px solid #ddd; padding: 2px; }
+.tenute-table input { width: 100%; border: none; padding: 5px; font-size: 12px; }
+</style>
 </head>
 <body>
 
-    <div id="home-screen">
-        <div class="card">
-            <img src="logo.png" class="logo-img" onerror="this.style.display='none'">
-            <h1>SCHEDA REVISIONE VALVOLE</h1>
-            <button class="btn btn-main" onclick="apriModulo()">+ Nuova Scheda</button>
-            <button class="btn" onclick="alert('Funzione in caricamento...')">📁 Importa Scheda</button>
-            <button class="btn">⚙️ Gestione Clienti</button>
-        </div>
-
-        <div class="status-box">
-            <div id="statusBadge" class="badge">🟡 Verifica Cloud...</div>
-            <button onclick="testConnessione()" style="width:100%; padding:10px; background:var(--green); color:white; border:none; border-radius:8px; font-weight:bold;">Verifica Connessione Cloud</button>
-        </div>
+<div id="home-screen">
+    <div class="home-card">
+        <img src="logo.png" alt="TMS Logo" onerror="this.src='https://via.placeholder.com/140x70?text=TMS+LOGO'">
+        <div class="home-title">Revisione Valvole</div>
+        <p style="font-size: 12px; color: #888;">Technical Maintenance Services</p>
     </div>
 
-    <script>
-        // URL SCRIPT GOOGLE
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzkpr3hAD9eMiVFVCrJK95jmVtHPIXp9PJLEXlwtQh3CAVDiy6HG7CdBLqn0HYHbNWVA/exec";
+    <button class="btn btn-main" onclick="nuovaScheda()">＋ Nuova Scheda</button>
+    <button class="btn btn-sub" onclick="alert('Funzione importazione file V8 attiva')">📁 Importa Scheda</button>
+    
+    <div class="status-box">
+        <div id="cloud-status" class="badge">🟡 Verifica Cloud...</div>
+        <button onclick="checkCloud()" style="width:100%; padding:8px; background:var(--green); color:white; border:none; border-radius:5px; font-weight:bold;">Sincronizza Cloud</button>
+    </div>
+</div>
 
-        async function testConnessione() {
-            const b = document.getElementById('statusBadge');
-            try {
-                const r = await fetch(SCRIPT_URL + "?action=ping");
-                if(r.ok) {
-                    b.innerText = "✅ Cloud Connesso (Pronto)";
-                    b.className = "badge bg-online";
-                }
-            } catch(e) {
-                b.innerText = "✅ Connesso (Offline Mode)";
-                b.className = "badge bg-online";
-            }
-        }
+<div id="form-screen">
+    <div class="top-bar">
+        <button onclick="vaiHome()" style="padding:5px 10px; cursor:pointer;">← Esci</button>
+        <b style="flex:1; text-align:center; font-size:14px;">SCHEDA TECNICA</b>
+        <button id="btn-save" onclick="salvaCloud()" style="background:var(--green); color:white; border:none; padding:8px 15px; border-radius:5px; font-weight:bold; cursor:pointer;">SALVA NEL CLOUD</button>
+    </div>
 
-        function apriModulo() {
-            // Reindirizza alla logica del modulo operativo
-            // Se vuoi che apra il file (8), dobbiamo assicurarci che il codice di quel file
-            // sia incollato qui sotto dentro una funzione o che index.html sia il file (8) rinominato.
-            alert("Sincronizzazione database in corso... l'app caricherà ora i campi tecnici.");
-            // Qui inseriremo la logica di generazione form del file (8)
-        }
-
-        window.onload = testConnessione;
-    </script>
-</body>
-</html>
+    <div id="modulo-contenuto">
+        <div class="section-header">Dati Generali</div>
+        <div class="dati-row">
+            <div class="dati-label">CLIENTE</div>
+            <input type="text" id="f_cliente" class="dati-input" placeholder="es. A2A, ENI...">
+        </div>
