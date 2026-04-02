@@ -2,140 +2,69 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>TMS Cloud - Revisioni</title>
 <style>
-    :root { --red: #c0392b; --green: #27ae60; }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body { font-family: -apple-system, Helvetica, Arial, sans-serif; background: #e8e8e8; margin: 0; padding: 0; }
-    
-    /* Home */
-    #home-screen { display: flex; flex-direction: column; align-items: center; padding: 20px; }
-    .home-card { background: white; border-radius: 15px; padding: 20px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    .logo-img { max-width: 120px; height: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
-    
-    /* Pulsanti */
-    .btn-main { background: var(--red); color: white; border: none; border-radius: 10px; padding: 18px; width: 100%; max-width: 400px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    
-    /* Form */
-    #form-screen { display: none; background: white; min-height: 100vh; }
-    .top-bar { background: white; padding: 10px; border-bottom: 2px solid var(--red); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
-    
-    /* Tabelle */
-    .section-header { background: #444; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
-    .dati-row { display: flex; border-bottom: 1px solid #eee; }
-    .dati-label { width: 120px; background: #f9f9f9; padding: 10px; font-size: 11px; font-weight: bold; color: #666; border-right: 1px solid #eee; }
-    .dati-input { flex: 1; border: none; padding: 10px; font-size: 14px; outline: none; width: 100%; }
+/* CSS ORIGINALE V8 - MANTENUTO */
+:root { --red: #c0392b; --green: #27ae60; --dark: #222; }
+* { box-sizing: border-box; }
+body { font-family: Arial, sans-serif; background: #e8e8e8; margin: 0; padding: 0; }
 
-    /* Lista Home */
-    .saved-list { width: 100%; max-width: 400px; margin-top: 20px; }
-    .scheda-item { background: white; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 5px solid var(--red); }
+/* Home Professionale */
+#home-screen { display: flex; flex-direction: column; align-items: center; padding: 30px 20px; }
+.home-card { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); text-align: center; width: 100%; max-width: 400px; margin-bottom: 20px; }
+.home-card img { max-width: 140px; margin-bottom: 15px; }
+
+/* Pulsanti */
+.btn-main { background: var(--red); color: white; border: none; border-radius: 10px; padding: 15px; width: 100%; max-width: 340px; font-size: 16px; font-weight: bold; cursor: pointer; margin-bottom: 10px; }
+.btn-sync { background: #444; color: white; border: none; border-radius: 8px; padding: 10px; width: 100%; max-width: 340px; cursor: pointer; font-size: 13px; }
+
+/* Form e Tabelle V8 */
+#form-screen { display: none; background: white; min-height: 100vh; }
+.top-bar { background: white; padding: 10px; border-bottom: 2px solid var(--red); display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+.section-header { background: #444; color: white; padding: 8px; font-size: 12px; font-weight: bold; text-transform: uppercase; border-top: 1px solid #666; }
+.dati-row { display: flex; border-bottom: 1px solid #ddd; }
+.dati-label { width: 140px; background: #f0f0f0; padding: 8px; font-size: 11px; font-weight: bold; border-right: 1px solid #ddd; }
+.dati-input { flex: 1; border: none; padding: 8px; font-size: 13px; font-weight: bold; outline: none; }
+
+/* Lista Schede Cloud */
+.saved-list { width: 100%; max-width: 500px; margin-top: 20px; }
+.scheda-card { background: white; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 6px solid var(--red); box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
 </style>
 </head>
 <body>
 
 <div id="home-screen">
     <div class="home-card">
-        <img src="logo.png" class="logo-img" alt="TMS" onerror="this.style.display='none'">
-        <div style="font-size: 18px; font-weight: 800; color: var(--red);">REVISIONE VALVOLE</div>
+        <img src="logo.png" alt="TMS" onerror="this.style.display='none'">
+        <div style="font-size: 20px; font-weight: 800; color: var(--red);">TMS CLOUD SYSTEM</div>
     </div>
     
-    <button class="btn-main" onclick="apriNuova()">+ NUOVA SCHEDA</button>
+    <button class="btn-main" onclick="nuovaScheda()">+ NUOVA REVISIONE</button>
+    <button class="btn-sync" onclick="syncFromCloud()">🔄 AGGIORNA DA CLOUD</button>
 
-    <div class="saved-list" id="lista-schede">
-        </div>
+    <div id="lista-schede" class="saved-list">
+        <p style="text-align:center; color:#888;">Caricamento schede...</p>
+    </div>
 </div>
 
 <div id="form-screen">
     <div class="top-bar">
-        <button onclick="chiudiForm()" style="border:none; background:none; font-size:16px;">✕</button>
-        <b id="titolo-id">NUOVA SCHEDA</b>
+        <button onclick="chiudiForm()">← Esci</button>
+        <b id="display-id">---</b>
         <button onclick="salvaTutto()" style="background:var(--green); color:white; border:none; padding:8px 15px; border-radius:5px; font-weight:bold;">SALVA</button>
     </div>
 
     <div class="section-header">Identificazione</div>
-    <div class="dati-row"><div class="dati-label">CLIENTE</div><input type="text" id="in-cliente" class="dati-input"></div>
-    <div class="dati-row"><div class="dati-label">TAG / POS.</div><input type="text" id="in-tag" class="dati-input"></div>
-    <div class="dati-row"><div class="dati-label">MATRICOLA</div><input type="text" id="in-matr" class="dati-input"></div>
+    <div class="dati-row"><div class="dati-label">CLIENTE</div><input type="text" id="f-client" class="dati-input"></div>
+    <div class="dati-row"><div class="dati-label">TAG / POS.</div><input type="text" id="f-tag" class="dati-input"></div>
+    <div class="dati-row"><div class="dati-label">MATRICOLA</div><input type="text" id="f-matr" class="dati-input"></div>
+
+    <div class="section-header">Dati Tecnici</div>
+    <div class="dati-row"><div class="dati-label">DN</div><input type="text" id="f-dn" class="dati-input"></div>
+    <div class="dati-row"><div class="dati-label">CLASSE</div><input type="text" id="f-cl" class="dati-input"></div>
     
-    <div class="section-header">Note</div>
-    <textarea id="in-note" style="width:100%; height:150px; border:none; padding:15px; font-family:inherit; font-size:14px;" placeholder="Dettagli intervento..."></textarea>
-</div>
-
-<script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyXd6jEOnlq_nFmnVChKB_MXN3taRlR7GtjYt8tpQ3fMduhheJ0lvqWt9y_89RIjjHgTQ/exec";
-
-function apriNuova() {
-    const nuovoId = "TMS-" + Date.now();
-    document.getElementById('titolo-id').innerText = nuovoId;
-    // Pulisce i campi
-    document.getElementById('in-cliente').value = "";
-    document.getElementById('in-tag').value = "";
-    document.getElementById('in-matr').value = "";
-    document.getElementById('in-note').value = "";
-    
-    document.getElementById('home-screen').style.display = 'none';
-    document.getElementById('form-screen').style.display = 'block';
-    window.scrollTo(0,0);
-}
-
-function chiudiForm() {
-    if(confirm("Tornare alla home? I dati non salvati andranno persi.")) {
-        document.getElementById('home-screen').style.display = 'flex';
-        document.getElementById('form-screen').style.display = 'none';
-        caricaLista();
-    }
-}
-
-async function salvaTutto() {
-    const id = document.getElementById('titolo-id').innerText;
-    const scheda = {
-        id: id,
-        clientName: document.getElementById('in-cliente').value,
-        tag: document.getElementById('in-tag').value,
-        matricola: document.getElementById('in-matr').value,
-        note: document.getElementById('in-note').value,
-        data: new Date().toLocaleString()
-    };
-
-    if(!scheda.clientName) { alert("Inserisci il cliente!"); return; }
-
-    // Salva Localmente (Per velocità)
-    let locali = JSON.parse(localStorage.getItem('tms_cache') || '{}');
-    locali[id] = scheda;
-    localStorage.setItem('tms_cache', JSON.stringify(locali));
-
-    // Salva su Google (Background)
-    try {
-        fetch(SCRIPT_URL, {
-            method: "POST",
-            mode: "no-cors",
-            body: JSON.stringify({ action: "save", scheda: scheda })
-        });
-    } catch(e) { console.log("Errore sync cloud"); }
-
-    alert("Scheda Salvata correttamente!");
-    document.getElementById('home-screen').style.display = 'flex';
-    document.getElementById('form-screen').style.display = 'none';
-    caricaLista();
-}
-
-function caricaLista() {
-    const lista = document.getElementById('lista-schede');
-    const dati = JSON.parse(localStorage.getItem('tms_cache') || '{}');
-    lista.innerHTML = "";
-    
-    Object.values(dati).reverse().forEach(s => {
-        const item = document.createElement('div');
-        item.className = 'scheda-item';
-        item.innerHTML = `<div><b>${s.clientName}</b><br><small>${s.id}</small></div><span>➔</span>`;
-        lista.appendChild(item);
-    });
-}
-
-window.onload = caricaLista;
-</script>
-</body>
-</html>
+    <div class="section-header">Note Intervento</div>
+    <textarea id="f-note" style="width:100%; height:200px; border:none; padding:15px; outline:none; font-size:14px;"></
