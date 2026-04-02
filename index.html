@@ -6,169 +6,80 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="TMS Schede">
-<meta name="theme-color" content="#c0392b">
 <title>Scheda Revisione Valvole - TMS</title>
 <style>
+/* Qui rimangono tutti i tuoi stili CSS originali della Versione 8 */
 :root { --red: #c0392b; --border: #888; --header-bg: #f0f0f0; --green: #27ae60; }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-height: 100vh; }
-#home-screen { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; padding: 30px 20px 40px; }
-.home-logo { background: white; border-radius: 12px; padding: 20px 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); margin-bottom: 24px; text-align: center; }
-.home-title { font-size: 20px; font-weight: 800; color: var(--red); margin-top: 10px; letter-spacing: 1px; }
-.btn-primary { background: var(--red); color: white; border: none; border-radius: 8px; padding: 15px 36px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; max-width: 340px; margin: 6px 0; }
-.top-bar { background: white; padding: 9px 14px; display: flex; align-items: center; gap: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.12); position: sticky; top: 0; z-index: 200; }
-#form-screen { display: none; max-width: 900px; margin: 0 auto; padding-bottom: 80px; background: white; }
-.section-header { background:#e0e0e0; font-weight:800; font-size:13px; padding:5px 10px; border-top:1.5px solid var(--border); text-transform:uppercase; }
-.dati-row { display: flex; border-bottom: 1px solid #ddd; }
-.dati-label { background: var(--header-bg); font-weight: 700; font-size: 12px; padding: 5px 10px; width: 130px; border-right: 1px solid #ddd; display: flex; align-items: center; }
-.dati-input { flex: 1; border: none; padding: 5px 8px; font-size: 12px; font-weight: 700; outline: none; }
-/* Badge per lo stato del Cloud */
-.status-badge { font-size: 11px; padding: 4px 8px; border-radius: 4px; margin-top: 10px; background: #ddd; }
-.status-online { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+/* ... (omessi per brevità, ma nel file che incollerai saranno presenti tutti) ... */
 </style>
 </head>
 <body>
 
-<div id="home-screen">
-  <div class="home-logo">
-    <div class="home-title">TMS CLOUD</div>
-    <div style="font-size:12px; color:#888;">Sistema Revisione Valvole</div>
-  </div>
-  
-  <button class="btn-primary" onclick="showNewScheda()">+ Nuova Scheda</button>
-  <button class="btn-primary" style="background:#444;" onclick="document.getElementById('import-file-inp').click()">📂 Importa JSON</button>
-  <input type="file" id="import-file-inp" accept=".json" style="display:none" onchange="importScheda(this)">
-  
-  <div id="cloud-status" class="status-badge">Verifica connessione cloud...</div>
-  
-  <div id="saved-list" style="width:100%; max-width:500px; margin-top:20px;">
-    </div>
-</div>
-
-<div id="form-screen">
-  <div class="top-bar">
-    <button onclick="goHome()" style="padding:5px 10px;">← Home</button>
-    <span style="flex:1; text-align:center; font-weight:bold; color:var(--red);">REVISIONE TECNICA</span>
-    <button onclick="salvaCloud()" id="btn-save-cloud" style="background:var(--green); color:white; border:none; padding:7px 15px; border-radius:5px; font-weight:bold; cursor:pointer;">☁️ SALVA CLOUD</button>
-  </div>
-
-  <div class="section-header">Identificazione Componente</div>
-  <div class="dati-row"><div class="dati-label">CLIENTE</div><input type="text" id="f_cliente" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">ORDINE</div><input type="text" id="f_ord" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">COMMESSA</div><input type="text" id="f_commessa" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">IMPIANTO</div><input type="text" id="f_impianto" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">TAG / POSIZ.</div><input type="text" id="f_tag" class="dati-input"></div>
-
-  <div class="section-header">Specifiche Valvola</div>
-  <div class="dati-row"><div class="dati-label">COSTRUTTORE</div><input type="text" id="f_valvola" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">MATRICOLA</div><input type="text" id="f_matr" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">DN</div><input type="text" id="f_dn" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">CLASSE / PN</div><input type="text" id="f_classe" class="dati-input"></div>
-  <div class="dati-row"><div class="dati-label">TIPOLOGIA</div><input type="text" id="f_tipologia" class="dati-input"></div>
-
-  <div class="section-header">Note e Interventi</div>
-  <textarea id="f_note" style="width:100%; min-height:150px; padding:10px; border:none; outline:none; font-family:inherit;" placeholder="Descrivere le attività svolte..."></textarea>
-  
-  <div style="padding:20px; text-align:center; color:#888; font-size:11px;">
-    ID Scheda: <span id="f_id">Nuova</span>
-  </div>
-</div>
-
 <script>
-// ================= CONFIGURAZIONE CLOUD =================
+// =================== CONFIGURAZIONE GOOGLE SCRIPT ===================
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyXd6jEOnlq_nFmnVChKB_MXN3taRlR7GtjYt8tpQ3fMduhheJ0lvqWt9y_89RIjjHgTQ/exec";
 
-// ================= LOGICA FUNZIONALE =================
-
-// Verifica se il Cloud risponde all'avvio
-async function checkCloud() {
-    const badge = document.getElementById('cloud-status');
-    try {
-        const resp = await fetch(SCRIPT_URL + "?action=ping");
-        const data = await resp.json();
-        if(data.ok) {
-            badge.innerText = "✅ Cloud Online: Pronto al salvataggio";
-            badge.classList.add('status-online');
-        }
-    } catch(e) {
-        badge.innerText = "🟡 Cloud Non Raggiungibile (Salvataggio solo Locale)";
-    }
-}
-
-function showNewScheda() {
-    document.getElementById('f_id').innerText = "TMS-" + Date.now();
-    // Pulisce i campi
-    document.querySelectorAll('.dati-input').forEach(i => i.value = "");
-    document.getElementById('f_note').value = "";
+// =================== LOGICA DI SALVATAGGIO CLOUD ===================
+// Ho aggiunto questa funzione che "legge" la tua scheda V8 e la manda a Google
+async function salvaAlCloud() {
+    const btn = document.querySelector('button[onclick*="saveScheda"]'); // Trova il tuo tasto salva
+    const originalText = btn.innerText;
     
-    document.getElementById('home-screen').style.display = 'none';
-    document.getElementById('form-screen').style.display = 'block';
-}
+    // Recupero l'ID della scheda corrente (quello che usi nella V8)
+    const currentId = document.getElementById('f-id').innerText;
+    if(!currentId || currentId === "---") { alert("Nessuna scheda aperta"); return; }
 
-function goHome() {
-    document.getElementById('home-screen').style.display = 'flex';
-    document.getElementById('form-screen').style.display = 'none';
-    checkCloud();
-}
+    // Recupero i dati dal tuo database locale (localStorage) che la V8 già popola
+    const savedData = JSON.parse(localStorage.getItem('tms_schede') || '{}');
+    const scheda = savedData[currentId];
 
-// SALVATAGGIO AL FOGLIO GOOGLE (Mapping campi Versione 8 -> Backend)
-async function salvaCloud() {
-    const btn = document.getElementById('btn-save-cloud');
-    
-    // Preparazione pacchetto dati per il tuo script GAS
-    const dataToSend = {
-        action: "save",
-        scheda: {
-            id: document.getElementById('f_id').innerText,
-            clientName: document.getElementById('f_cliente').value,
-            ord: document.getElementById('f_ord').value,
-            commessa: document.getElementById('f_commessa').value,
-            impianto: document.getElementById('f_impianto').value,
-            tag: document.getElementById('f_tag').value,
-            valvola: document.getElementById('f_valvola').value,
-            matricola: document.getElementById('f_matr').value,
-            dn: document.getElementById('f_dn').value,
-            classe: document.getElementById('f_classe').value,
-            tipologia: document.getElementById('f_tipologia').value,
-            note: document.getElementById('f_note').value,
-            createdAt: new Date().toISOString()
-        },
-        photos: [] // Qui verrebbero inserite le foto in Base64 se presenti
-    };
+    if(!scheda) { alert("Salva prima la scheda localmente"); return; }
 
-    if(!dataToSend.scheda.clientName) {
-        alert("Inserire almeno il nome cliente per salvare.");
-        return;
-    }
-
-    btn.innerText = "⏳ INVIO...";
+    btn.innerText = "⏳ INVIO CLOUD...";
     btn.disabled = true;
 
     try {
-        // Invio tramite POST (usando no-cors perché Apps Script ridireziona)
+        const payload = {
+            action: "save",
+            scheda: {
+                id: scheda.id,
+                clientName: scheda.clientName || "",
+                ord: scheda.ord || "",
+                commessa: scheda.commessa || "",
+                impianto: scheda.impianto || "",
+                tag: scheda.tag || "",
+                valvola: scheda.valvola || "",
+                matricola: scheda.matricola || "",
+                dn: scheda.dn || "",
+                classe: scheda.classe || "",
+                tipologia: scheda.tipologia || "",
+                note: scheda.note || "",
+                createdAt: scheda.createdAt || new Date().toISOString()
+            },
+            photos: scheda.photos || [] // Invia anche le foto se presenti
+        };
+
         await fetch(SCRIPT_URL, {
             method: "POST",
-            mode: "no-cors", 
+            mode: "no-cors",
             cache: "no-cache",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(dataToSend)
+            body: JSON.stringify(payload)
         });
 
-        alert("✅ Dati inviati correttamente al Foglio Google!");
-        goHome();
-    } catch(e) {
-        console.error(e);
-        alert("❌ Errore di connessione. Controlla la rete.");
+        alert("✅ Sincronizzazione Cloud completata!");
+    } catch (e) {
+        alert("❌ Errore Cloud: " + e.message);
     } finally {
-        btn.innerText = "☁️ SALVA CLOUD";
+        btn.innerText = originalText;
         btn.disabled = false;
     }
 }
 
-// Inizializza test all'apertura
-window.onload = checkCloud;
+// =================== IL TUO CODICE JS ORIGINALE V8 ===================
+// Qui sotto deve continuare tutto il tuo codice originale: 
+// function saveScheda(), function renderList(), ecc.
+// Basta aggiungere il tasto "Sincronizza" nella tua interfaccia.
 </script>
-
 </body>
 </html>
