@@ -396,6 +396,7 @@ body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-hei
     <span class="top-bar-title" id="form-title">Scheda</span>
     <div class="top-bar-actions">
       <button class="btn-sm success" onclick="saveScheda()">💾 Salva</button>
+      <button class="btn-sm" style="background:#27ae60;" onclick="saveToCloud()">☁️ Cloud</button>
       <button class="btn-sm" onclick="openModal('share-modal')">📤 Esporta</button>
       <button class="btn-sm outline" onclick="document.getElementById('import-file-inp').click()" title="Importa altra scheda">📂</button>
     </div>
@@ -1001,13 +1002,14 @@ const EXPORT_CSS = `
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{font-family:Arial,sans-serif;font-size:12px;color:#222;background:white;}
 
-/* ogni .page è un foglio A4 */
+/* ogni .page è un foglio A4 con footer fisso in fondo */
 .page{
   width:210mm;
-  min-height:297mm;
-  padding:10mm 12mm 22mm 12mm;
+  height:297mm;
+  padding:10mm 12mm 32mm 12mm;
   position:relative;
   background:white;
+  overflow:hidden;
 }
 /* separatore di pagina — solo in stampa */
 @media print{
@@ -1051,34 +1053,70 @@ table.tenute td{border:1px solid #ddd;padding:4px 6px;}
 .note-box ul{margin:0 0 0 16px;padding:0;}
 .note-box li{margin:2px 0;}
 
-/* foto */
-.photos-table{width:100%;border-collapse:collapse;}
-.photos-table td{width:50%;padding:8px;text-align:center;vertical-align:bottom;border:none;}
-.photos-table td img{max-width:100%;border:1px solid #ccc;border-radius:4px;display:block;margin:0 auto;}
-.photos-table .fig-label{font-size:11px;color:#555;margin-top:4px;}
+/* FOTO — riempiono tutta l'area disponibile della pagina 2
+   L'area utile è: 297mm - 10mm top - 32mm bottom - header ~35mm - section-header ~10mm ≈ 210mm
+   Dividiamo equamente per numero di righe */
+.photo-area{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  gap:4mm;
+}
+.photo-row{
+  display:flex;
+  gap:4mm;
+  flex:1;
+}
+.photo-cell{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+}
+.photo-cell img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  border:1px solid #ccc;
+  border-radius:3px;
+  display:block;
+}
+.photo-cell .fig-label{
+  font-size:10px;
+  color:#555;
+  margin-top:2mm;
+  text-align:center;
+  flex-shrink:0;
+}
 
-/* footer fisso in fondo a ogni .page */
+/* footer: sempre assoluto in fondo alla .page — non si muove MAI */
 .page-footer{
   position:absolute;
-  bottom:0;left:0;right:0;
+  bottom:0; left:0; right:0;
+  height:28mm;
   padding:0 12mm 6mm 12mm;
   background:white;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
 }
 .page-footer-divline{
-  position:relative;height:2px;background:#888;
-  display:flex;align-items:center;justify-content:center;
+  position:relative; height:2px; background:#888;
+  display:flex; align-items:center; justify-content:center;
   margin-bottom:6px;
 }
 .page-footer-ved{
-  position:absolute;top:50%;left:50%;
+  position:absolute; top:50%; left:50%;
   transform:translate(-50%,-50%);
-  width:44px;height:44px;background:white;
-  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  width:44px; height:44px; background:white;
+  border-radius:50%; display:flex; align-items:center; justify-content:center;
 }
 .page-footer-ved img{width:40px;height:40px;border-radius:50%;}
 .page-footer-row{
-  display:flex;justify-content:space-between;
-  font-size:12px;color:#333;
+  display:flex; justify-content:space-between;
+  font-size:12px; color:#333;
 }
 `;
 
@@ -1146,25 +1184,45 @@ function buildExportHTML(){
   const noteLines=(s.note||'').split('\n').filter(x=>x.trim());
   const noteHTML=noteLines.length?'<ul>'+noteLines.map(l=>`<li>${l}</li>`).join('')+'</ul>':s.note||'&nbsp;';
 
-  // foto — pagina 2 (solo se ci sono foto)
+  // PAGINA 2: foto distribuite equamente su tutta la pagina A4
+  // Area disponibile per le foto (mm):
+  //   297mm totale - 10mm top - 32mm footer - ~38mm header - ~10mm section-header = ~207mm
+  // Dividiamo per numero di righe con flex per riempire tutto lo spazio
   const photos=s.photos||[];
   let page2HTML='';
   if(photos.length>0){
-    let photosHTML='<table class="photos-table"><tbody>';
-    for(let i=0;i<photos.length;i+=2){
-      const p1=photos[i],p2=photos[i+1]||null;
-      photosHTML+=`<tr>
-        <td><img src="${p1.dataUrl}" style="max-height:220px;"><div class="fig-label">${p1.label||''}</div></td>
-        ${p2?`<td><img src="${p2.dataUrl}" style="max-height:220px;"><div class="fig-label">${p2.label||''}</div></td>`:'<td></td>'}
-      </tr>`;
+    const nRows = Math.ceil(photos.length/2);
+    // Altezza per ogni cella foto: area utile divisa per righe, meno gap
+    // Usiamo flex con flex:1 per riempire automaticamente — il CSS fa il resto
+    // Calcoliamo l'altezza esplicita per ogni img: (207mm - nRows*4mm gap) / nRows
+    const cellHeightMm = Math.floor((207 - nRows*4) / nRows);
+    const cellHeightPx = Math.round(cellHeightMm * 3.7795); // mm → px appross.
+
+    let rowsHTML = '';
+    for(let i=0; i<photos.length; i+=2){
+      const p1=photos[i], p2=photos[i+1]||null;
+      rowsHTML += `<div class="photo-row" style="height:${cellHeightMm}mm;">
+        <div class="photo-cell">
+          <img src="${p1.dataUrl}" style="max-height:${cellHeightMm-8}mm;" alt="">
+          <div class="fig-label">${p1.label||''}</div>
+        </div>
+        ${p2
+          ? `<div class="photo-cell">
+              <img src="${p2.dataUrl}" style="max-height:${cellHeightMm-8}mm;" alt="">
+              <div class="fig-label">${p2.label||''}</div>
+            </div>`
+          : '<div class="photo-cell"></div>'
+        }
+      </div>`;
     }
-    photosHTML+='</tbody></table>';
 
     page2HTML=`
 <div class="page">
   ${buildPageHeader(s,cName)}
   <div class="section-header">REPORT FOTOGRAFICO</div>
-  ${photosHTML}
+  <div class="photo-area" style="height:${nRows*cellHeightMm + (nRows-1)*4}mm;">
+    ${rowsHTML}
+  </div>
   ${buildPageFooter(s)}
 </div>`;
   }
