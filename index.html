@@ -394,7 +394,9 @@ body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-hei
   <div class="top-bar">
     <button class="btn-sm outline" onclick="goHome()">← Home</button>
     <span class="top-bar-title" id="form-title">Scheda</span>
+    <span id="status-badge" style="display:none;background:#27ae60;color:white;font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;white-space:nowrap;">✅ COMPLETA</span>
     <div class="top-bar-actions">
+      <button class="btn-sm" id="btn-completa" onclick="toggleCompleted()" style="background:#f39c12;">📋 Completa</button>
       <button class="btn-sm success" onclick="saveScheda()">💾 Salva</button>
       <button class="btn-sm" style="background:#27ae60;" onclick="saveToCloud()">☁️ Cloud</button>
       <button class="btn-sm" onclick="openModal('share-modal')">📤 Esporta</button>
@@ -654,7 +656,8 @@ function newSchedaData(clientId, clientName, type) {
     tenute,
     hasN: type==='ENEL_P',
     tenuteLabel: type==='ENEL_P'?'Guarnizioni Sostituite':'TENUTE',
-    note:'', photos:[]
+    note:'', photos:[],
+    completed: false, completedAt: null, completedBy: null
   };
 }
 
@@ -669,8 +672,8 @@ function renderHome() {
     const d=new Date(s.createdAt).toLocaleDateString('it');
     return `<div class="saved-item">
       <div class="saved-item-info" onclick="openScheda('${s.id}')">
-        <div class="saved-item-title">${s.clientName||'?'} — ${s.valvola||'(valvola)'} ${s.tag?'| TAG '+s.tag:''}</div>
-        <div class="saved-item-sub">ORD: ${s.ord||'—'} | ${d}</div>
+        <div class="saved-item-title">${s.completed?'<span style="color:#27ae60;margin-right:4px;">✅</span>':''}${s.clientName||'?'} — ${s.valvola||'(valvola)'} ${s.tag?'| TAG '+s.tag:''}</div>
+        <div class="saved-item-sub">ORD: ${s.ord||'—'} | ${d}${s.completed?' | <span style="color:#27ae60;font-weight:700;">COMPLETA</span>':''}</div>
       </div>
       <div class="saved-item-actions">
         <button class="btn-sm outline" onclick="openScheda('${s.id}')">Apri</button>
@@ -701,6 +704,7 @@ function createScheda() {
   let clientName=manualName||(clients.find(x=>x.id===cid)||{}).name||'';
   if(!clientName){alert('Inserisci nome cliente');return;}
   currentScheda=newSchedaData(cid||'m_'+Date.now(),clientName,type);
+  currentScheda._openedAt = new Date().toISOString();
   closeModal('new-modal'); showFormScreen();
 }
 
@@ -719,15 +723,17 @@ function normalizeScheda(s) {
   if(typeof s.dn !== 'string') s.dn = s.dn || '';
   if(typeof s.classe !== 'string') s.classe = s.classe || '';
   if(typeof s.tipologia !== 'string') s.tipologia = s.tipologia || '';
+  if(typeof s.completed !== 'boolean') s.completed = false;
+  if(!s.completedAt) s.completedAt = null;
+  if(!s.completedBy) s.completedBy = null;
   return s;
 }
 
 function openScheda(id) {
-  // Deep copy per isolare completamente lo stato dalla lista — evita che
-  // modifiche in una scheda si propaghino alle altre (oggetti per riferimento)
   const found = savedSchedeList.find(s => s.id === id);
   if(found) {
     currentScheda = normalizeScheda(JSON.parse(JSON.stringify(found)));
+    currentScheda._openedAt = new Date().toISOString();
     showFormScreen();
   }
 }
@@ -772,6 +778,7 @@ function showFormScreen(){
   document.getElementById('home-screen').style.display='none';
   document.getElementById('form-screen').style.display='block';
   document.getElementById('form-title').textContent=currentScheda.clientName||'—';
+  updateCompletedUI();
   renderScheda();
 }
 
@@ -1041,15 +1048,17 @@ function _openCameraOverlay(stream) {
     ov.remove();
   }
 
-  snapBtn.onclick = () => {
+  snapBtn.onclick = async () => {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const rawUrl = canvas.toDataURL('image/jpeg', 0.85);
+    cleanup();
+    showToast('⏳ Ottimizzazione foto...','#2980b9');
+    const dataUrl = await compressPhoto(rawUrl);
     currentScheda.photos.push({dataUrl, label: 'Figura ' + (currentScheda.photos.length + 1)});
     rerenderPhotos();
-    cleanup();
     showToast('✅ Foto aggiunta','#27ae60');
   };
 
@@ -1062,14 +1071,41 @@ function _openCameraOverlay(stream) {
   document.body.appendChild(ov);
 }
 
+// ── Comprimi foto al momento dell'inserimento (max 1200px lato lungo, JPEG 80%) ──
+// Riduce drasticamente il peso per Firebase senza perdere qualità per il report
+async function compressPhoto(dataUrl, maxW=1600, maxH=1600, quality=0.92){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.naturalWidth, h=img.naturalHeight;
+      // Se già piccola, non ridimensionare ma ri-comprimi in JPEG
+      const scale=Math.min(1, maxW/w, maxH/h);
+      const tw=Math.round(w*scale), th=Math.round(h*scale);
+      const cv=document.createElement('canvas');
+      cv.width=tw; cv.height=th;
+      cv.getContext('2d').drawImage(img,0,0,tw,th);
+      resolve(cv.toDataURL('image/jpeg',quality));
+    };
+    img.onerror=()=>resolve(dataUrl);
+    img.src=dataUrl;
+  });
+}
+
 function addPhotos(input){
-  const files=Array.from(input.files); let loaded=0;
+  const files=Array.from(input.files);
+  if(!files.length) return;
+  let loaded=0;
+  showToast('⏳ Ottimizzazione foto...','#2980b9');
   files.forEach(file=>{
     const reader=new FileReader();
-    reader.onload=e=>{
-      currentScheda.photos.push({dataUrl:e.target.result,label:'Figura '+(currentScheda.photos.length+1)});
+    reader.onload=async e=>{
+      const compressed = await compressPhoto(e.target.result);
+      currentScheda.photos.push({dataUrl:compressed,label:'Figura '+(currentScheda.photos.length+1)});
       loaded++;
-      if(loaded===files.length) rerenderPhotos();
+      if(loaded===files.length){
+        rerenderPhotos();
+        showToast('✅ '+files.length+' foto aggiunt'+(files.length===1?'a':'e'),'#27ae60');
+      }
     };
     reader.readAsDataURL(file);
   });
@@ -1091,6 +1127,50 @@ async function saveScheda(){
   }catch(e){
     console.error(e);
     showToast('❌ Errore salvataggio','#c0392b');
+  }
+}
+
+// ── STATUS COMPLETA ─────────────────────────────────────────────────
+function toggleCompleted(){
+  if(!currentScheda) return;
+  if(currentScheda.completed){
+    // Riapri scheda
+    if(!confirm('Vuoi riaprire questa scheda e togliere lo stato "Completa"?')) return;
+    currentScheda.completed = false;
+    currentScheda.completedAt = null;
+    currentScheda.completedBy = null;
+    showToast('🔓 Scheda riaperta','#e67e22');
+  } else {
+    // Segna completa
+    if(!confirm('Segnare questa scheda come COMPLETA?\nPotrà essere archiviata e scaricata.')) return;
+    let userName = localStorage.getItem('tms_username') || '';
+    if(!userName){
+      userName = prompt('Il tuo nome:', '') || 'Operatore';
+      localStorage.setItem('tms_username', userName);
+    }
+    currentScheda.completed = true;
+    currentScheda.completedAt = new Date().toISOString();
+    currentScheda.completedBy = userName;
+    showToast('✅ Scheda segnata come COMPLETA!','#27ae60');
+  }
+  updateCompletedUI();
+  // Salva automaticamente sul cloud (non in locale)
+  saveToCloud();
+}
+
+function updateCompletedUI(){
+  const badge = document.getElementById('status-badge');
+  const btn = document.getElementById('btn-completa');
+  if(!currentScheda || !badge || !btn) return;
+  if(currentScheda.completed){
+    badge.style.display = 'inline';
+    badge.textContent = '✅ COMPLETA';
+    btn.textContent = '🔓 Riapri';
+    btn.style.background = '#e67e22';
+  } else {
+    badge.style.display = 'none';
+    btn.textContent = '📋 Completa';
+    btn.style.background = '#f39c12';
   }
 }
 function showToast(msg,color='#27ae60'){
@@ -1865,8 +1945,8 @@ function renderCloudList() {
     const isLocal = savedSchedeList.some(x => x.id === s.id);
     return `<div class="saved-item" style="border-left:3px solid #27ae60;">
       <div class="saved-item-info" onclick="openCloudScheda('${s.id}')">
-        <div class="saved-item-title">${s.clientName||'?'} — ${s.valvola||'(valvola)'} ${s.tag?'| TAG '+s.tag:''}</div>
-        <div class="saved-item-sub">ORD: ${s.ord||'—'} | ${d}</div>
+        <div class="saved-item-title">${s.completed?'<span style="color:#27ae60;margin-right:4px;">✅</span>':''}${s.clientName||'?'} — ${s.valvola||'(valvola)'} ${s.tag?'| TAG '+s.tag:''}</div>
+        <div class="saved-item-sub">ORD: ${s.ord||'—'} | ${d}${s.completed?' | <span style="color:#27ae60;font-weight:700;">COMPLETA</span>':''}</div>
         <div class="saved-item-cloud">☁️ Cloud${isLocal?' · 💾 Anche locale':''} · ${s._savedBy||'?'}</div>
       </div>
       <div class="saved-item-actions">
@@ -1883,8 +1963,8 @@ async function openCloudScheda(id) {
     showToast('⏳ Caricamento...','#2980b9');
     const scheda = await fbGet('/full/' + id);
     if(scheda && scheda.id) {
-      // Deep copy + normalizzazione campi che Firebase potrebbe aver rimosso
       currentScheda = normalizeScheda(JSON.parse(JSON.stringify(scheda)));
+      currentScheda._openedAt = new Date().toISOString();
       showFormScreen();
     } else {
       throw new Error('Scheda non trovata');
@@ -1922,33 +2002,141 @@ async function saveToCloud() {
   }
 
   const now = new Date().toISOString();
-  const payload = {...s, _savedBy: userName, updatedAt: now};
-
-  // Salva metadati (senza foto) → /meta/{id}
-  const meta = {
-    id: s.id, clientName: s.clientName||'', type: s.type||'A2A',
-    ord: s.ord||'', commessa: s.commessa||'', impianto: s.impianto||'', tag: s.tag||'',
-    valvola: s.valvola||'', dn: s.dn||'', classe: s.classe||'', tipologia: s.tipologia||'',
-    tenuteLabel: s.tenuteLabel||'TENUTE', hasN: s.hasN||false,
-    createdAt: s.createdAt||now, updatedAt: now, _savedBy: userName
-  };
-
-  // Salva dati completi con foto → /full/{id}
-  const full = {...payload};
-  delete full._thumbs;
 
   showToast('⏳ Salvataggio cloud...','#2980b9');
   try {
+    // ── MERGE: leggi versione cloud prima di sovrascrivere ──
+    let remote = null;
+    try { remote = await fbGet('/full/' + s.id); } catch(e) { /* scheda nuova, nessun remote */ }
+
+    let merged;
+    if(remote && remote.id === s.id && remote.updatedAt && s._openedAt &&
+       new Date(remote.updatedAt) > new Date(s._openedAt)) {
+      // Il cloud è stato aggiornato DA UN ALTRO OPERATORE dopo che noi abbiamo aperto la scheda
+      merged = mergeSchede(s, remote, userName);
+      showToast('🔄 Merge con modifiche di ' + (remote._savedBy||'altro operatore'),'#2980b9');
+    } else {
+      merged = {...s};
+    }
+
+    merged._savedBy = userName;
+    merged.updatedAt = now;
+
+    // Costruisci meta (senza foto)
+    const meta = {
+      id: merged.id, clientName: merged.clientName||'', type: merged.type||'A2A',
+      ord: merged.ord||'', commessa: merged.commessa||'', impianto: merged.impianto||'', tag: merged.tag||'',
+      valvola: merged.valvola||'', dn: merged.dn||'', classe: merged.classe||'', tipologia: merged.tipologia||'',
+      tenuteLabel: merged.tenuteLabel||'TENUTE', hasN: merged.hasN||false,
+      completed: merged.completed||false, completedAt: merged.completedAt||null, completedBy: merged.completedBy||null,
+      createdAt: merged.createdAt||now, updatedAt: now, _savedBy: userName
+    };
+
+    // Costruisci full (con foto)
+    const full = {...merged};
+    delete full._thumbs;
+    delete full._openedAt;
+
     await Promise.all([
-      fbPut('/meta/' + s.id, meta),
-      fbPut('/full/' + s.id, full)
+      fbPut('/meta/' + merged.id, meta),
+      fbPut('/full/' + merged.id, full)
     ]);
+
+    // Aggiorna currentScheda con il risultato del merge
+    currentScheda = normalizeScheda(JSON.parse(JSON.stringify(merged)));
+    currentScheda._openedAt = now;
+
     showToast('✅ Salvata sul cloud! Visibile a tutti.','#27ae60');
     await syncFromCloud();
   } catch(e) {
     showToast('❌ Firebase: ' + e.message, '#c0392b');
   }
   closeModal('share-modal');
+}
+
+// ── MERGE INTELLIGENTE per lavoro simultaneo ────────────────────────
+// Confronta la versione locale (mia) con quella remota (cloud).
+// Per i campi semplici: se io ho modificato il campo (diverso dal valore di apertura), uso il mio;
+// altrimenti prendo quello del cloud (che potrebbe essere stato aggiornato dall'altro operatore).
+// Per gli array (ops, tenute, photos): merge additivo — unisce le modifiche di entrambi.
+function mergeSchede(local, remote) {
+  const merged = JSON.parse(JSON.stringify(local));
+
+  // Campi stringa semplici: prendi il valore non-vuoto più recente
+  const stringFields = ['ord','commessa','impianto','tag','valvola','dn','classe','tipologia',
+                        'clientName','note','footerData','footerTimbro'];
+  stringFields.forEach(f => {
+    const lv = (local[f]||'').trim();
+    const rv = (remote[f]||'').trim();
+    // Se locale è vuoto ma remoto ha un valore, prendi remoto
+    if(!lv && rv) merged[f] = rv;
+    // Se entrambi hanno valore e sono diversi, tieni locale (chi salva per ultimo vince su quel campo)
+  });
+
+  // Note: concatena se entrambi hanno scritto cose diverse
+  if(local.note && remote.note && local.note !== remote.note) {
+    // Se il mio testo non contiene già quello remoto e viceversa, concatena
+    if(!local.note.includes(remote.note) && !remote.note.includes(local.note)) {
+      merged.note = local.note + '\n---\n' + remote.note;
+    }
+  }
+
+  // Operazioni: merge per testo — unisce checkbox di entrambi
+  if(Array.isArray(remote.ops) && Array.isArray(local.ops)) {
+    const mergedOps = JSON.parse(JSON.stringify(local.ops));
+    // Per ogni op remota, se esiste nel locale con stesso testo, fai OR dei checked
+    // Se non esiste nel locale, aggiungila
+    (remote.ops||[]).forEach(rop => {
+      const idx = mergedOps.findIndex(o => o.text === rop.text);
+      if(idx >= 0) {
+        // OR: se uno dei due l'ha spuntata, resta spuntata
+        if(rop.checked) mergedOps[idx].checked = true;
+      } else {
+        // Operazione aggiunta dall'altro operatore
+        mergedOps.push(JSON.parse(JSON.stringify(rop)));
+      }
+    });
+    merged.ops = mergedOps;
+  }
+
+  // Tenute: merge per nome — prendi valori non-vuoti dall'altro
+  if(Array.isArray(remote.tenute) && Array.isArray(local.tenute)) {
+    const mergedTenute = JSON.parse(JSON.stringify(local.tenute));
+    (remote.tenute||[]).forEach(rt => {
+      const idx = mergedTenute.findIndex(t => t.nome === rt.nome);
+      if(idx >= 0) {
+        // Per ogni campo della tenuta, se il mio è vuoto e il remoto no, prendi remoto
+        ['materiale','dimensioni','n'].forEach(k => {
+          if(!(mergedTenute[idx][k]||'').trim() && (rt[k]||'').trim()) {
+            mergedTenute[idx][k] = rt[k];
+          }
+        });
+      } else if(rt.nome) {
+        mergedTenute.push(JSON.parse(JSON.stringify(rt)));
+      }
+    });
+    merged.tenute = mergedTenute;
+  }
+
+  // Foto: merge additivo — aggiungi foto remote che non esistono in locale
+  if(Array.isArray(remote.photos) && Array.isArray(local.photos)) {
+    const localUrls = new Set(local.photos.map(p => (p.dataUrl||'').substring(0, 100)));
+    (remote.photos||[]).forEach(rp => {
+      const key = (rp.dataUrl||'').substring(0, 100);
+      if(!localUrls.has(key)) {
+        merged.photos.push(JSON.parse(JSON.stringify(rp)));
+      }
+    });
+  }
+
+  // Status completata: se uno dei due l'ha segnata completa, resta completa
+  if(remote.completed && !local.completed) {
+    merged.completed = true;
+    merged.completedAt = remote.completedAt;
+    merged.completedBy = remote.completedBy;
+  }
+
+  return merged;
 }
 
 // ── Funzioni legacy GAS (stub vuoti per compatibilità) ─────────────
@@ -1972,11 +2160,11 @@ function startRealtimeSync() {
     _sseSource.addEventListener('put', function(e) {
       try {
         const payload = JSON.parse(e.data);
-        const path = payload.path;   // '/' = dump completo, '/{id}' = singola scheda
+        const path = payload.path;
         const data = payload.data;
 
         if(path === '/') {
-          // Dump completo di /meta — data è il dizionario {id1:{...}, id2:{...}, ...}
+          // Dump completo di /meta
           if(data && typeof data === 'object') {
             cloudSchedeList = Object.values(data)
               .filter(Boolean)
@@ -1985,13 +2173,11 @@ function startRealtimeSync() {
             cloudSchedeList = [];
           }
         } else {
-          // Aggiornamento singola scheda — path = '/{id}', data = oggetto scheda o null
+          // Aggiornamento singola scheda — path = '/{id}'
           const id = path.replace(/^\//, '');
           if(data === null) {
-            // Scheda eliminata
             cloudSchedeList = cloudSchedeList.filter(x => x.id !== id);
           } else if(data && data.id) {
-            // Scheda aggiornata o aggiunta
             const idx = cloudSchedeList.findIndex(x => x.id === id);
             if(idx >= 0) {
               cloudSchedeList[idx] = data;
@@ -2000,7 +2186,6 @@ function startRealtimeSync() {
             }
             cloudSchedeList.sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
           }
-          // Se data è un oggetto ma senza .id, ignoriamo (evento malformato)
         }
 
         renderCloudList();
