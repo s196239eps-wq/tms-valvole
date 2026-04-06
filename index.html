@@ -703,12 +703,31 @@ function createScheda() {
   currentScheda=newSchedaData(cid||'m_'+Date.now(),clientName,type);
   closeModal('new-modal'); showFormScreen();
 }
+
+// ── Normalizza campi che Firebase potrebbe aver rimosso (array vuoti → undefined) ──
+function normalizeScheda(s) {
+  if(!s) return s;
+  if(!Array.isArray(s.photos)) s.photos = [];
+  if(!Array.isArray(s.ops))    s.ops = [];
+  if(!Array.isArray(s.tenute)) s.tenute = [];
+  if(typeof s.note !== 'string') s.note = s.note || '';
+  if(typeof s.ord !== 'string') s.ord = s.ord || '';
+  if(typeof s.commessa !== 'string') s.commessa = s.commessa || '';
+  if(typeof s.impianto !== 'string') s.impianto = s.impianto || '';
+  if(typeof s.tag !== 'string') s.tag = s.tag || '';
+  if(typeof s.valvola !== 'string') s.valvola = s.valvola || '';
+  if(typeof s.dn !== 'string') s.dn = s.dn || '';
+  if(typeof s.classe !== 'string') s.classe = s.classe || '';
+  if(typeof s.tipologia !== 'string') s.tipologia = s.tipologia || '';
+  return s;
+}
+
 function openScheda(id) {
   // Deep copy per isolare completamente lo stato dalla lista — evita che
   // modifiche in una scheda si propaghino alle altre (oggetti per riferimento)
   const found = savedSchedeList.find(s => s.id === id);
   if(found) {
-    currentScheda = JSON.parse(JSON.stringify(found));
+    currentScheda = normalizeScheda(JSON.parse(JSON.stringify(found)));
     showFormScreen();
   }
 }
@@ -1864,8 +1883,8 @@ async function openCloudScheda(id) {
     showToast('⏳ Caricamento...','#2980b9');
     const scheda = await fbGet('/full/' + id);
     if(scheda && scheda.id) {
-      // Deep copy per isolare lo stato — evita propagazione tra schede
-      currentScheda = JSON.parse(JSON.stringify(scheda));
+      // Deep copy + normalizzazione campi che Firebase potrebbe aver rimosso
+      currentScheda = normalizeScheda(JSON.parse(JSON.stringify(scheda)));
       showFormScreen();
     } else {
       throw new Error('Scheda non trovata');
@@ -1953,14 +1972,37 @@ function startRealtimeSync() {
     _sseSource.addEventListener('put', function(e) {
       try {
         const payload = JSON.parse(e.data);
+        const path = payload.path;   // '/' = dump completo, '/{id}' = singola scheda
         const data = payload.data;
-        if(data && typeof data === 'object') {
-          cloudSchedeList = Object.values(data)
-            .filter(Boolean)
-            .sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+
+        if(path === '/') {
+          // Dump completo di /meta — data è il dizionario {id1:{...}, id2:{...}, ...}
+          if(data && typeof data === 'object') {
+            cloudSchedeList = Object.values(data)
+              .filter(Boolean)
+              .sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+          } else {
+            cloudSchedeList = [];
+          }
         } else {
-          cloudSchedeList = [];
+          // Aggiornamento singola scheda — path = '/{id}', data = oggetto scheda o null
+          const id = path.replace(/^\//, '');
+          if(data === null) {
+            // Scheda eliminata
+            cloudSchedeList = cloudSchedeList.filter(x => x.id !== id);
+          } else if(data && data.id) {
+            // Scheda aggiornata o aggiunta
+            const idx = cloudSchedeList.findIndex(x => x.id === id);
+            if(idx >= 0) {
+              cloudSchedeList[idx] = data;
+            } else {
+              cloudSchedeList.push(data);
+            }
+            cloudSchedeList.sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+          }
+          // Se data è un oggetto ma senza .id, ignoriamo (evento malformato)
         }
+
         renderCloudList();
         const n = cloudSchedeList.length;
         setDot('green', '☁️ Live — ' + n + (n===1?' scheda':' schede'));
