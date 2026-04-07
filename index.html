@@ -431,13 +431,13 @@ body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-hei
 
 <div class="modal-overlay" id="client-modal">
   <div class="modal" style="max-width:480px;">
-    <h3>⚙️ Gestione Clienti</h3>
+    <h3>⚙️ Gestione Clienti / Template</h3>
     <div id="client-list-modal"></div>
     <hr style="margin:12px 0;border-color:#eee;">
     <div style="font-weight:700;font-size:13px;margin-bottom:8px;">Aggiungi Cliente</div>
     <label>Nome Cliente</label>
     <input type="text" id="new-client-name" placeholder="es. A2A, Enel...">
-    <label>Tipo Scheda</label>
+    <label>Tipo Scheda (base di partenza)</label>
     <select id="new-client-type">
       <option value="A2A">Scheda Standard (A2A)</option>
       <option value="ENEL_T">Enel Termico</option>
@@ -446,6 +446,33 @@ body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-hei
     <div class="modal-actions">
       <button class="btn-sm outline" onclick="closeModal('client-modal')">Chiudi</button>
       <button class="btn-sm success" onclick="addClient()">+ Aggiungi</button>
+    </div>
+  </div>
+</div>
+
+<!-- TEMPLATE EDITOR MODAL -->
+<div class="modal-overlay" id="tpl-modal">
+  <div class="modal" style="max-width:560px;max-height:90vh;overflow-y:auto;">
+    <h3 id="tpl-title">✏️ Modifica Template</h3>
+
+    <div style="font-weight:700;font-size:13px;margin:10px 0 6px;">Operazioni</div>
+    <div id="tpl-ops-list" style="max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;padding:4px;margin-bottom:6px;"></div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="tpl-new-op" placeholder="Nuova operazione..." style="flex:1;">
+      <button class="btn-sm success" onclick="tplAddOp()">+</button>
+    </div>
+
+    <div style="font-weight:700;font-size:13px;margin:14px 0 6px;">Tenute / Guarnizioni</div>
+    <div id="tpl-tenute-list" style="max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:6px;padding:4px;margin-bottom:6px;"></div>
+    <div style="display:flex;gap:6px;">
+      <input type="text" id="tpl-new-tenuta" placeholder="Nuova tenuta/guarnizione..." style="flex:1;">
+      <button class="btn-sm success" onclick="tplAddTenuta()">+</button>
+    </div>
+
+    <div class="modal-actions" style="margin-top:14px;">
+      <button class="btn-sm outline" onclick="tplCancel()">Annulla</button>
+      <button class="btn-sm" style="background:#2980b9;" onclick="tplReset()">🔄 Reset Default</button>
+      <button class="btn-sm success" onclick="tplSave()">💾 Salva Template</button>
     </div>
   </div>
 </div>
@@ -493,9 +520,9 @@ const VED_IMG = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgsAAAIOCAYAAAA2k
 
 // =================== STORAGE (IndexedDB — permanente) ===================
 let clients = [
-  {id:'c1',name:'A2A',type:'A2A'},
-  {id:'c2',name:'Enel Termico',type:'ENEL_T'},
-  {id:'c3',name:'Enel Sfera',type:'ENEL_P'}
+  {id:'c1',name:'A2A',type:'A2A',customOps:null,customTenute:null},
+  {id:'c2',name:'Enel Termico',type:'ENEL_T',customOps:null,customTenute:null},
+  {id:'c3',name:'Enel Sfera',type:'ENEL_P',customOps:null,customTenute:null}
 ];
 let savedSchedeList = [];
 let currentScheda = null;
@@ -635,13 +662,23 @@ function getOpsEnelP() { return [
 ]; }
 
 function newSchedaData(clientId, clientName, type) {
-  const tenute = type==='ENEL_P'
-    ? ['Guarnizione accoppiamento corpo valvola','O-ring accoppiamento corpo valvola',
-       'Guarnizione accoppiamento perno','O-ring accoppiamento perno','O-ring sede di tenuta',
-       'Guarnizione fondello','O-ring fondello','Pacco baderna perno','O-ring frizione perno','O-ring lente']
-       .map(nome=>({nome,n:'',materiale:'',dimensioni:''}))
-    : ['Guarnizione fondello','Guarnizione autoclave','Baderna valvola']
-       .map(nome=>({nome,materiale:'',dimensioni:''}));
+  // Cerca il client per usare template personalizzati se disponibili
+  const client = clients.find(c => c.id === clientId);
+
+  // Operazioni: custom dal template oppure default per tipo
+  const opsSource = (client && client.customOps)
+    ? client.customOps
+    : (type === 'ENEL_P' ? getOpsEnelP() : getOpsA2A());
+
+  // Tenute: custom dal template oppure default per tipo
+  const tenuteSource = (client && client.customTenute)
+    ? client.customTenute
+    : getDefaultTenute(type);
+
+  const hasN = type === 'ENEL_P';
+  const tenute = hasN
+    ? tenuteSource.map(nome => ({nome, n:'', materiale:'', dimensioni:''}))
+    : tenuteSource.map(nome => ({nome, materiale:'', dimensioni:''}));
 
   // ID univoco: timestamp + random suffix per evitare collisioni
   const uid = 'scheda_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
@@ -652,10 +689,10 @@ function newSchedaData(clientId, clientName, type) {
     ord:'', commessa:'', impianto:'', tag:'',
     valvola:'', dn:'', classe:'', tipologia:'',
     footerData:'', footerTimbro:'',
-    ops: (type==='ENEL_P'?getOpsEnelP():getOpsA2A()).map(o=>({text:o,checked:false})),
+    ops: opsSource.map(o=>({text:o,checked:false})),
     tenute,
-    hasN: type==='ENEL_P',
-    tenuteLabel: type==='ENEL_P'?'Guarnizioni Sostituite':'TENUTE',
+    hasN,
+    tenuteLabel: hasN ? 'Guarnizioni Sostituite' : 'TENUTE',
     note:'', photos:[],
     completed: false, completedAt: null, completedBy: null
   };
@@ -753,17 +790,23 @@ function goHome() {
 function showClientManager(){ renderClientListModal(); openModal('client-modal'); }
 function renderClientListModal() {
   const tm={A2A:'A2A Standard',ENEL_T:'Enel Termico',ENEL_P:'Enel a Sfera'};
-  document.getElementById('client-list-modal').innerHTML=clients.map(c=>
-    `<div class="client-card">
-      <div><div class="client-card-name">${c.name}</div><div class="client-card-type">${tm[c.type]||c.type}</div></div>
+  document.getElementById('client-list-modal').innerHTML=clients.map(c=>{
+    const hasCustom = c.customOps || c.customTenute;
+    return `<div class="client-card">
+      <div style="flex:1;">
+        <div class="client-card-name">${c.name}</div>
+        <div class="client-card-type">${tm[c.type]||c.type}${hasCustom?' — <span style="color:#27ae60;font-size:11px;">template personalizzato</span>':''}</div>
+      </div>
+      <button class="btn-sm" style="background:#2980b9;margin-right:4px;" onclick="openTemplateEditor('${c.id}')">✏️ Template</button>
       <button class="btn-sm danger" onclick="removeClient('${c.id}')">🗑</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function addClient(){
   const name=document.getElementById('new-client-name').value.trim();
   const type=document.getElementById('new-client-type').value;
   if(!name){alert('Inserisci nome');return;}
-  clients.push({id:'c'+Date.now(),name,type});
+  clients.push({id:'c'+Date.now(),name,type,customOps:null,customTenute:null});
   saveClientsToStorage(); document.getElementById('new-client-name').value='';
   renderClientListModal();
 }
@@ -771,6 +814,109 @@ function removeClient(id){
   if(!confirm('Rimuovere?'))return;
   clients=clients.filter(c=>c.id!==id);
   saveClientsToStorage(); renderClientListModal();
+}
+
+// =================== TEMPLATE EDITOR ===================
+let _tplClientId = null;
+let _tplOps = [];
+let _tplTenute = [];
+
+function getDefaultOps(type) {
+  return type === 'ENEL_P' ? getOpsEnelP() : getOpsA2A();
+}
+function getDefaultTenute(type) {
+  return type === 'ENEL_P'
+    ? ['Guarnizione accoppiamento corpo valvola','O-ring accoppiamento corpo valvola',
+       'Guarnizione accoppiamento perno','O-ring accoppiamento perno','O-ring sede di tenuta',
+       'Guarnizione fondello','O-ring fondello','Pacco baderna perno','O-ring frizione perno','O-ring lente']
+    : ['Guarnizione fondello','Guarnizione autoclave','Baderna valvola'];
+}
+
+function openTemplateEditor(clientId) {
+  const c = clients.find(x => x.id === clientId);
+  if(!c) return;
+  _tplClientId = clientId;
+  // Carica ops/tenute custom oppure default
+  _tplOps = c.customOps ? [...c.customOps] : [...getDefaultOps(c.type)];
+  _tplTenute = c.customTenute ? [...c.customTenute] : [...getDefaultTenute(c.type)];
+  document.getElementById('tpl-title').textContent = '✏️ Template: ' + c.name;
+  renderTplOps();
+  renderTplTenute();
+  openModal('tpl-modal');
+}
+
+function renderTplOps() {
+  document.getElementById('tpl-ops-list').innerHTML = _tplOps.map((op, i) =>
+    `<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid #f0f0f0;">
+      <span style="flex:1;font-size:12px;">${op}</span>
+      <button style="background:none;border:none;cursor:pointer;font-size:14px;color:#c0392b;" onclick="tplRemoveOp(${i})">×</button>
+    </div>`
+  ).join('') || '<div style="color:#aaa;font-size:12px;padding:6px;">Nessuna operazione</div>';
+}
+
+function renderTplTenute() {
+  document.getElementById('tpl-tenute-list').innerHTML = _tplTenute.map((t, i) =>
+    `<div style="display:flex;align-items:center;gap:4px;padding:3px 4px;border-bottom:1px solid #f0f0f0;">
+      <span style="flex:1;font-size:12px;">${t}</span>
+      <button style="background:none;border:none;cursor:pointer;font-size:14px;color:#c0392b;" onclick="tplRemoveTenuta(${i})">×</button>
+    </div>`
+  ).join('') || '<div style="color:#aaa;font-size:12px;padding:6px;">Nessuna tenuta</div>';
+}
+
+function tplAddOp() {
+  const inp = document.getElementById('tpl-new-op');
+  const v = inp.value.trim();
+  if(!v) return;
+  _tplOps.push(v);
+  inp.value = '';
+  renderTplOps();
+}
+
+function tplRemoveOp(i) {
+  _tplOps.splice(i, 1);
+  renderTplOps();
+}
+
+function tplAddTenuta() {
+  const inp = document.getElementById('tpl-new-tenuta');
+  const v = inp.value.trim();
+  if(!v) return;
+  _tplTenute.push(v);
+  inp.value = '';
+  renderTplTenute();
+}
+
+function tplRemoveTenuta(i) {
+  _tplTenute.splice(i, 1);
+  renderTplTenute();
+}
+
+function tplReset() {
+  const c = clients.find(x => x.id === _tplClientId);
+  if(!c) return;
+  if(!confirm('Ripristinare operazioni e tenute ai valori default per ' + c.name + '?')) return;
+  _tplOps = [...getDefaultOps(c.type)];
+  _tplTenute = [...getDefaultTenute(c.type)];
+  renderTplOps();
+  renderTplTenute();
+}
+
+function tplCancel() {
+  _tplClientId = null;
+  _tplOps = [];
+  _tplTenute = [];
+  closeModal('tpl-modal');
+}
+
+function tplSave() {
+  const c = clients.find(x => x.id === _tplClientId);
+  if(!c) return;
+  c.customOps = [..._tplOps];
+  c.customTenute = [..._tplTenute];
+  saveClientsToStorage();
+  closeModal('tpl-modal');
+  renderClientListModal();
+  showToast('✅ Template salvato per ' + c.name, '#27ae60');
 }
 
 // =================== FORM ===================
