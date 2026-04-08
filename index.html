@@ -399,6 +399,7 @@ body { font-family: Arial, sans-serif; background: #e8e8e8; color: #222; min-hei
       <button class="btn-sm" id="btn-completa" onclick="toggleCompleted()" style="background:#f39c12;">📋 Completa</button>
       <button class="btn-sm success" onclick="saveScheda()">💾 Salva</button>
       <button class="btn-sm" style="background:#27ae60;" onclick="saveToCloud()">☁️ Cloud</button>
+      <button class="btn-sm" style="background:#8e44ad;" onclick="duplicateScheda()">📋 Duplica</button>
       <button class="btn-sm" onclick="openModal('share-modal')">📤 Esporta</button>
       <button class="btn-sm outline" onclick="document.getElementById('import-file-inp').click()" title="Importa altra scheda">📂</button>
     </div>
@@ -600,11 +601,34 @@ async function loadFromDB(){
   }
 }
 function saveClientsToStorage(){
-  // Always save clients to localStorage (small data, works everywhere including Safari iOS)
   try{ localStorage.setItem('tms_clients_v2', JSON.stringify(clients)); }catch(e){}
   if(!_useLocalFallback){
     dbPut('config',{key:'clients',value:clients}).catch(e=>console.warn(e));
   }
+  // Sync template al cloud per condividerli con tutti
+  fbPut('/templates', clients).catch(e=>console.warn('Template cloud sync error:', e));
+}
+
+async function loadTemplatesFromCloud(){
+  try{
+    const remote = await fbGet('/templates');
+    if(remote && Array.isArray(remote) && remote.length){
+      remote.forEach(rt=>{
+        if(!rt || !rt.id) return;
+        const local = clients.find(c=>c.id===rt.id);
+        if(!local){
+          clients.push(rt);
+        } else {
+          if(rt.customOps) local.customOps = rt.customOps;
+          if(rt.customTenute) local.customTenute = rt.customTenute;
+        }
+      });
+      try{ localStorage.setItem('tms_clients_v2', JSON.stringify(clients)); }catch(e){}
+      if(!_useLocalFallback){
+        dbPut('config',{key:'clients',value:clients}).catch(e=>console.warn(e));
+      }
+    }
+  }catch(e){ console.warn('Template cloud load error:', e); }
 }
 function saveSchedeToStorage(){
   // Individual schede are saved via saveScheda() directly
@@ -774,11 +798,24 @@ function openScheda(id) {
     showFormScreen();
   }
 }
+// ── PIN DI SICUREZZA PER ELIMINAZIONE SCHEDE ────────────────────────
+// Solo gli utenti autorizzati possono eliminare schede (locale e cloud)
+const DELETE_PIN = '2025';
+
+function verifyDeletePin() {
+  const pin = prompt('🔒 Inserisci il PIN per eliminare la scheda:');
+  if(pin === null) return false; // Annullato
+  if(pin === DELETE_PIN) return true;
+  showToast('❌ PIN errato — eliminazione non autorizzata', '#c0392b');
+  return false;
+}
+
 async function deleteScheda(id) {
+  if(!verifyDeletePin()) return;
   if(!confirm('Eliminare questa scheda?'))return;
   try{ await deleteSchedaFromDB(id); }catch(e){console.error(e);}
   savedSchedeList=savedSchedeList.filter(s=>s.id!==id);
-  renderHome(); //saveSchedeToStorage(); renderHome();
+  renderHome();
 }
 function goHome() {
   document.getElementById('form-screen').style.display='none';
@@ -1319,6 +1356,64 @@ function updateCompletedUI(){
     btn.style.background = '#f39c12';
   }
 }
+
+// ── DUPLICA SCHEDA e pubblica sul cloud ─────────────────────────────
+async function duplicateScheda(){
+  if(!currentScheda) return;
+  collectNote();
+  if(!confirm('Duplicare questa scheda e pubblicarla sul cloud?')) return;
+
+  // Deep copy con nuovo ID
+  const copy = normalizeScheda(JSON.parse(JSON.stringify(currentScheda)));
+  copy.id = 'scheda_' + Date.now() + '_' + Math.random().toString(36).substr(2,6);
+  copy.createdAt = new Date().toISOString();
+  copy.completed = false;
+  copy.completedAt = null;
+  copy.completedBy = null;
+  delete copy._openedAt;
+
+  let userName = localStorage.getItem('tms_username') || '';
+  if(!userName){
+    userName = prompt('Il tuo nome:', '') || 'Operatore';
+    localStorage.setItem('tms_username', userName);
+  }
+
+  const now = new Date().toISOString();
+  copy._savedBy = userName;
+  copy.updatedAt = now;
+
+  // Salva sul cloud
+  const meta = {
+    id: copy.id, clientName: copy.clientName||'', type: copy.type||'A2A',
+    ord: copy.ord||'', commessa: copy.commessa||'', impianto: copy.impianto||'', tag: copy.tag||'',
+    valvola: copy.valvola||'', dn: copy.dn||'', classe: copy.classe||'', tipologia: copy.tipologia||'',
+    tenuteLabel: copy.tenuteLabel||'TENUTE', hasN: copy.hasN||false,
+    completed: false, completedAt: null, completedBy: null,
+    createdAt: now, updatedAt: now, _savedBy: userName
+  };
+  const full = {...copy};
+  delete full._thumbs;
+
+  _mySaveIds.add(copy.id);
+  showToast('⏳ Duplicazione e pubblicazione...','#8e44ad');
+  try {
+    await Promise.all([
+      fbPut('/meta/' + copy.id, meta),
+      fbPut('/full/' + copy.id, full)
+    ]);
+    // Apri la copia nell'editor
+    currentScheda = copy;
+    currentScheda._openedAt = now;
+    updateCompletedUI();
+    showToast('✅ Scheda duplicata e pubblicata sul cloud!','#27ae60');
+    await syncFromCloud();
+    setTimeout(()=>{ _mySaveIds.delete(copy.id); }, 5000);
+  } catch(e) {
+    _mySaveIds.delete(copy.id);
+    showToast('❌ Errore: ' + e.message, '#c0392b');
+  }
+}
+
 function showToast(msg,color='#27ae60'){
   const fb=document.createElement('div');
   fb.textContent=msg;
@@ -2253,6 +2348,7 @@ async function openCloudScheda(id) {
 
 // ── ELIMINA scheda dal cloud ────────────────────────────────────────
 async function deleteCloudScheda(id) {
+  if(!verifyDeletePin()) return;
   if(!confirm('Eliminare questa scheda dal cloud?\nVisibile a tutti gli utenti.')) return;
   _mySaveIds.add(id);
   try {
@@ -2591,6 +2687,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   // Prima sync immediata, poi avvia real-time SSE
   setTimeout(async () => {
     await syncFromCloud();
+    await loadTemplatesFromCloud();
+    renderHome();
     startRealtimeSync();
   }, 800);
 });
