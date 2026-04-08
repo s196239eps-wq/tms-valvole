@@ -1395,11 +1395,41 @@ function _unlockAudio() {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.01);
       _audioUnlocked = true;
+      // Rimuovi il banner
+      const banner = document.getElementById('audio-unlock-banner');
+      if(banner) {
+        banner.style.opacity = '0';
+        setTimeout(()=> banner.remove(), 400);
+      }
     }).catch(()=>{});
   } catch(e) {}
 }
 document.addEventListener('click', _unlockAudio, {once: false});
 document.addEventListener('touchstart', _unlockAudio, {once: false});
+
+// Mostra banner "tocca per attivare audio" all'avvio
+document.addEventListener('DOMContentLoaded', ()=>{
+  setTimeout(()=>{
+    if(_audioUnlocked) return;
+    const b = document.createElement('div');
+    b.id = 'audio-unlock-banner';
+    b.innerHTML = '🔊 <b>Tocca qui per attivare le notifiche sonore</b>';
+    b.style.cssText = `
+      position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+      background:linear-gradient(135deg,#1a1a2e,#0f3460); color:white;
+      padding:14px 28px; border-radius:12px; z-index:10002;
+      font-size:14px; text-align:center; cursor:pointer;
+      box-shadow:0 4px 20px rgba(0,0,0,0.4); transition:opacity 0.4s;
+      animation: _audioPulse 2s infinite;
+    `;
+    // Animazione pulsante
+    const style = document.createElement('style');
+    style.textContent = '@keyframes _audioPulse { 0%,100%{transform:translateX(-50%) scale(1);} 50%{transform:translateX(-50%) scale(1.05);} }';
+    document.head.appendChild(style);
+    b.onclick = ()=> _unlockAudio();
+    document.body.appendChild(b);
+  }, 0);
+});
 
 function _playNotifSound() {
   try {
