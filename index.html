@@ -1325,6 +1325,72 @@ function showToast(msg,color='#27ae60'){
   fb.style.cssText=`position:fixed;top:20px;left:50%;transform:translateX(-50%);background:${color};color:white;padding:10px 24px;border-radius:8px;font-weight:700;z-index:9999;font-size:14px;`;
   document.body.appendChild(fb); setTimeout(()=>fb.remove(),2200);
 }
+
+// ── NOTIFICHE IN-APP per aggiornamenti cloud da altri utenti ────────
+let _notifQueue = [];
+let _notifShowing = false;
+
+function showNotification(msg, color='#2980b9') {
+  _notifQueue.push({msg, color});
+  if(!_notifShowing) _processNotifQueue();
+}
+
+function _processNotifQueue() {
+  if(!_notifQueue.length) { _notifShowing = false; return; }
+  _notifShowing = true;
+  const {msg, color} = _notifQueue.shift();
+
+  // Suono sottile di notifica
+  _playNotifSound();
+
+  // Banner in alto
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = `
+    position:fixed; top:-60px; left:50%; transform:translateX(-50%);
+    background:${color}; color:white; padding:12px 24px; border-radius:0 0 10px 10px;
+    font-weight:700; z-index:10000; font-size:13px; max-width:90vw; text-align:center;
+    box-shadow:0 4px 20px rgba(0,0,0,0.3); transition:top 0.4s ease;
+    cursor:pointer;
+  `;
+  el.onclick = () => { el.remove(); _processNotifQueue(); };
+  document.body.appendChild(el);
+
+  // Animazione entrata
+  requestAnimationFrame(() => { el.style.top = '0px'; });
+
+  // Auto-dismiss dopo 5 secondi
+  setTimeout(() => {
+    el.style.top = '-60px';
+    setTimeout(() => { el.remove(); _processNotifQueue(); }, 400);
+  }, 5000);
+}
+
+function _playNotifSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'square';
+    // 4 beep al massimo volume — 2 secondi totale
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.45);
+    osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.95);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 1.45);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime + 0.35);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime + 0.45);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime + 0.8);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime + 0.95);
+    gain.gain.setValueAtTime(0.001, ctx.currentTime + 1.3);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime + 1.45);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.0);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 2.0);
+  } catch(e) { /* audio non supportato */ }
+}
 function collectNote(){const ta=document.getElementById('note-ta');if(ta) currentScheda.note=ta.value;}
 
 // =================== HTML EXPORT ===================
@@ -2123,6 +2189,7 @@ async function openCloudScheda(id) {
 // ── ELIMINA scheda dal cloud ────────────────────────────────────────
 async function deleteCloudScheda(id) {
   if(!confirm('Eliminare questa scheda dal cloud?\nVisibile a tutti gli utenti.')) return;
+  _mySaveIds.add(id);
   try {
     await Promise.all([
       fbDelete('/meta/' + id),
@@ -2134,6 +2201,7 @@ async function deleteCloudScheda(id) {
   } catch(e) {
     showToast('❌ ' + e.message, '#c0392b');
   }
+  setTimeout(()=>{ _mySaveIds.delete(id); }, 5000);
 }
 
 // ── SALVA scheda sul cloud ──────────────────────────────────────────
@@ -2150,6 +2218,7 @@ async function saveToCloud() {
   const now = new Date().toISOString();
 
   showToast('⏳ Salvataggio cloud...','#2980b9');
+  _mySaveIds.add(s.id);
   try {
     // ── MERGE: leggi versione cloud prima di sovrascrivere ──
     let remote = null;
@@ -2194,7 +2263,9 @@ async function saveToCloud() {
 
     showToast('✅ Salvata sul cloud! Visibile a tutti.','#27ae60');
     await syncFromCloud();
+    setTimeout(()=>{ _mySaveIds.delete(s.id); }, 5000);
   } catch(e) {
+    _mySaveIds.delete(s.id);
     showToast('❌ Firebase: ' + e.message, '#c0392b');
   }
   closeModal('share-modal');
@@ -2293,6 +2364,8 @@ function disconnectCloud() {}
 // Firebase Realtime Database supporta SSE nativo: aggiunta .json?format=export&auth=...
 // Usiamo EventSource sul nodo /meta per ricevere aggiornamenti istantanei
 let _sseSource = null;
+let _sseFirstDumpDone = false;
+let _mySaveIds = new Set();
 
 function startRealtimeSync() {
   // Chiudi eventuale connessione precedente
@@ -2311,26 +2384,73 @@ function startRealtimeSync() {
 
         if(path === '/') {
           // Dump completo di /meta
+          let newList = [];
           if(data && typeof data === 'object') {
-            cloudSchedeList = Object.values(data)
+            newList = Object.values(data)
               .filter(Boolean)
               .sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
-          } else {
-            cloudSchedeList = [];
           }
+
+          // Dopo il primo dump, confronta e notifica
+          if(_sseFirstDumpDone) {
+            const oldIds = new Set(cloudSchedeList.map(s=>s.id));
+            const oldCompleted = {};
+            cloudSchedeList.forEach(s=>{ if(s) oldCompleted[s.id]=!!s.completed; });
+
+            newList.forEach(s=>{
+              if(!s || !s.id || _mySaveIds.has(s.id)) return;
+              if(!oldIds.has(s.id)){
+                // NUOVA SCHEDA
+                showNotification('📋 ' + (s._savedBy||'Qualcuno') + ' ha creato: ' + (s.clientName||'') + (s.valvola?' — '+s.valvola:''), '#2980b9');
+              } else if(s.completed && !oldCompleted[s.id]){
+                // COMPLETATA
+                showNotification('✅ ' + (s.completedBy||s._savedBy||'Qualcuno') + ' ha completato: ' + (s.clientName||'') + (s.valvola?' — '+s.valvola:''), '#27ae60');
+              }
+            });
+
+            // ELIMINAZIONI
+            const newIds = new Set(newList.map(s=>s.id));
+            cloudSchedeList.forEach(old=>{
+              if(old && old.id && !newIds.has(old.id) && !_mySaveIds.has(old.id)){
+                showNotification('🗑️ ' + (old._savedBy||'Qualcuno') + ' ha eliminato: ' + (old.clientName||'') + (old.valvola?' — '+old.valvola:''), '#e74c3c');
+              }
+            });
+          }
+          _sseFirstDumpDone = true;
+          cloudSchedeList = newList;
+
         } else {
           // Aggiornamento singola scheda — path = '/{id}'
           const id = path.replace(/^\//, '');
           if(data === null) {
+            // ELIMINATA
+            const old = cloudSchedeList.find(x => x.id === id);
             cloudSchedeList = cloudSchedeList.filter(x => x.id !== id);
+            if(old && !_mySaveIds.has(id)) {
+              showNotification('🗑️ ' + (old._savedBy||'Qualcuno') + ' ha eliminato: ' + (old.clientName||'') + ' — ' + (old.valvola||''), '#e74c3c');
+            }
           } else if(data && data.id) {
             const idx = cloudSchedeList.findIndex(x => x.id === id);
+            const isNew = idx < 0;
+            const wasCompleted = idx >= 0 && cloudSchedeList[idx].completed;
             if(idx >= 0) {
               cloudSchedeList[idx] = data;
             } else {
               cloudSchedeList.push(data);
             }
             cloudSchedeList.sort((a,b) => new Date(b.updatedAt||0) - new Date(a.updatedAt||0));
+
+            // Notifica solo CREA e COMPLETA (non aggiornamenti generici)
+            if(!_mySaveIds.has(id)) {
+              const who = data._savedBy || 'Qualcuno';
+              const desc = (data.clientName||'') + (data.valvola ? ' — ' + data.valvola : '') + (data.tag ? ' | TAG ' + data.tag : '');
+              if(data.completed && !wasCompleted) {
+                showNotification('✅ ' + who + ' ha completato: ' + desc, '#27ae60');
+              } else if(isNew) {
+                showNotification('📋 ' + who + ' ha creato: ' + desc, '#2980b9');
+              }
+              // Nessuna notifica per aggiornamenti normali
+            }
           }
         }
 
