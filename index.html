@@ -1366,9 +1366,44 @@ function _processNotifQueue() {
   }, 5000);
 }
 
+// ── Audio: AudioContext persistente, sbloccato al primo tocco utente ──
+let _audioCtx = null;
+let _audioUnlocked = false;
+
+function _ensureAudioCtx() {
+  if(!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if(_audioCtx.state === 'suspended') {
+    _audioCtx.resume().catch(()=>{});
+  }
+  return _audioCtx;
+}
+
+// Sblocca audio al primo tocco/click dell'utente (richiesto dai browser moderni)
+function _unlockAudio() {
+  if(_audioUnlocked) return;
+  try {
+    const ctx = _ensureAudioCtx();
+    ctx.resume().then(()=>{
+      // Suono silenzioso per sbloccare definitivamente
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.001, ctx.currentTime);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.01);
+      _audioUnlocked = true;
+    }).catch(()=>{});
+  } catch(e) {}
+}
+document.addEventListener('click', _unlockAudio, {once: false});
+document.addEventListener('touchstart', _unlockAudio, {once: false});
+
 function _playNotifSound() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _ensureAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
