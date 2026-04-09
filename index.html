@@ -803,10 +803,10 @@ function openScheda(id) {
 const DELETE_PIN = '2025';
 
 function verifyDeletePin() {
-  const pin = prompt('🔒 Inserisci il PIN per eliminare la scheda:');
-  if(pin === null) return false; // Annullato
+  const pin = prompt('🔒 Inserisci il PIN di autorizzazione:');
+  if(pin === null) return false;
   if(pin === DELETE_PIN) return true;
-  showToast('❌ PIN errato — eliminazione non autorizzata', '#c0392b');
+  showToast('❌ PIN errato — operazione non autorizzata', '#c0392b');
   return false;
 }
 
@@ -1316,6 +1316,7 @@ async function saveScheda(){
 // ── STATUS COMPLETA ─────────────────────────────────────────────────
 function toggleCompleted(){
   if(!currentScheda) return;
+  if(!verifyDeletePin()) return;
   if(currentScheda.completed){
     // Riapri scheda
     if(!confirm('Vuoi riaprire questa scheda e togliere lo stato "Completa"?')) return;
